@@ -239,6 +239,50 @@ def run_eos(username, password, sheet):
         i+=1
 
 
+    driver.quit()
+    
+def run_eos_mkt(username, password, sheet):
+    driver = init_eos(username, password)
+    capture_screenshot_and_upload(
+            driver, "after-init.png"
+        )
+    data = read_data(sheet)
+    i = 2
+    for e in data:
+        print(e)
+        # Step 2: Navigate to the desired page
+        driver.get(f"https://eos.firstinfresh.be/shop/item/{e.get('GY-REF')}")
+        human_sleep(1, 3)
+        print(driver.page_source)  # This will print the full HTML of the current page
+        capture_screenshot_and_upload(
+            driver, f"item-{e.get('GY-REF')}.png"
+        )
+
+
+        # Step 3: Scrape the required information
+        #Try or skip
+        
+        try:
+         vp_data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[4]/td[2]")
+         scraped_data = vp_data_element.text
+         scraped_data = extract_price(scraped_data)
+         print(scraped_data)
+         update_cell(sheet, i, PV_MKT, scraped_data)
+         data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[2]/td[2]")
+         scraped_data = data_element.text
+         print(scraped_data)
+         update_cell(sheet, i, GY_MKT_UNIT, scraped_data)
+         ct = datetime.datetime.now()
+         update_cell(sheet, i, LAST_UPDATE_COL_MKT, str(ct))
+        except:
+         print("Error")
+         update_cell(sheet, i, GY_MKT_UNIT, "Error")
+         ct = datetime.datetime.now()
+         update_cell(sheet, i, LAST_UPDATE_COL_MKT, "Error")
+         
+        i+=1
+
+
     driver.quit()  
 
 
@@ -252,6 +296,7 @@ def handler(event, context):
     # run_eos(GY_USERNAME_MARKET, GY_PASSWORD_MARKET, sheet_market)
     # run_mc(MC_USERNAME_MARKET, MC_PASSWORD_MARKET, sheet_market, MC_SHOP_ID_MARKET)
     # sheet_market.sort((PRIJS_VERSHIL_COL, 'des'))
+    run_eos_mkt(GY_USERNAME_MARKET, GY_PASSWORD_MARKET, sheet_express)
     run_eos(GY_USERNAME_EXPRESS, GY_PASSWORD_EXPRESS, sheet_express)
     # run_mc(MC_USERNAME_EXPRESS, MC_PASSWORD_EXPRESS, sheet_express, MC_SHOP_ID_EXPRESS)
     # sheet_express.sort((PRIJS_VERSHIL_COL, 'des'))
