@@ -22,6 +22,7 @@ import os
 
 DEBUG = os.getenv("DEBUG")
 
+
 # Function to take a screenshot and upload it to S3
 def capture_screenshot_and_upload(driver, file_name):
     if not DEBUG:
@@ -297,6 +298,7 @@ def handler(event, context):
     # run_mc(MC_USERNAME_MARKET, MC_PASSWORD_MARKET, sheet_market, MC_SHOP_ID_MARKET)
     # sheet_market.sort((PRIJS_VERSHIL_COL, 'des'))
     run_eos_mkt(GY_USERNAME_MARKET, GY_PASSWORD_MARKET, sheet_express)
+    human_sleep(6, 8)
     run_eos(GY_USERNAME_EXPRESS, GY_PASSWORD_EXPRESS, sheet_express)
     # run_mc(MC_USERNAME_EXPRESS, MC_PASSWORD_EXPRESS, sheet_express, MC_SHOP_ID_EXPRESS)
     # sheet_express.sort((PRIJS_VERSHIL_COL, 'des'))
