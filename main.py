@@ -94,10 +94,10 @@ def delete_row(sheet, row):
 # Constants for column indexes
 GY_MKT_UNIT = 6
 GY_EXP_UNIT = 7
-PV_MKT = 9
-PV_EXP = 10
-LAST_UPDATE_COL_MKT = 11
-LAST_UPDATE_COL_EXP = 12
+PV_MKT = 11
+PV_EXP = 12
+LAST_UPDATE_COL_MKT = 13
+LAST_UPDATE_COL_EXP = 14
 
 # Load configuration
 config = get_autogreens_config()
