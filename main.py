@@ -1,5 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 import gspread
 from time import sleep
 import random
@@ -27,44 +28,55 @@ DEBUG = os.getenv("DEBUG")
 def capture_screenshot_and_upload(driver, file_name):
     if not DEBUG:
         return
-    bucket_name = "autogreens-debug"
-    screenshot = driver.get_screenshot_as_png()  # Capture screenshot as binary data
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=file_name,
-        Body=screenshot,
-        ContentType="image/png"
-    )
-    print(f"Screenshot saved to s3://{bucket_name}/{file_name}")
+    try:
+        bucket_name = "autogreens-debug"
+        screenshot = driver.get_screenshot_as_png()  # Capture screenshot as binary data
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=file_name,
+            Body=screenshot,
+            ContentType="image/png"
+        )
+        print(f"Screenshot saved to s3://{bucket_name}/{file_name}")
+    except Exception as e:
+        print(f"Error uploading screenshot {file_name}: {str(e)}")
 
 # Fetch Google API credentials JSON from AWS Secrets Manager
 def get_google_credentials():
-    secret_name = "my-google-api-credentials"  # Name of your secret in Secrets Manager
-    region_name = "eu-west-3"  # AWS region of the Secrets Manager
+    try:
+        secret_name = "my-google-api-credentials"  # Name of your secret in Secrets Manager
+        region_name = "eu-west-3"  # AWS region of the Secrets Manager
 
-    # Create a Secrets Manager client
-    client = boto3.client("secretsmanager", region_name=region_name)
-    
-    # Retrieve the secret
-    response = client.get_secret_value(SecretId=secret_name)
-    
-    # Parse the JSON credentials and create credentials object
-    secret_json = json.loads(response["SecretString"])
-    credentials = service_account.Credentials.from_service_account_info(secret_json)
-    return credentials
+        # Create a Secrets Manager client
+        client = boto3.client("secretsmanager", region_name=region_name)
+        
+        # Retrieve the secret
+        response = client.get_secret_value(SecretId=secret_name)
+        
+        # Parse the JSON credentials and create credentials object
+        secret_json = json.loads(response["SecretString"])
+        credentials = service_account.Credentials.from_service_account_info(secret_json)
+        return credentials
+    except Exception as e:
+        print(f"Error retrieving Google credentials from Secrets Manager: {str(e)}")
+        raise
 
 # Fetch custom configuration from AWS Secrets Manager
 def get_autogreens_config():
-    secret_name = "autogreens-config"  # Name of your secret in Secrets Manager
-    region_name = "eu-west-3"  # AWS region of the Secrets Manager
+    try:
+        secret_name = "autogreens-config"  # Name of your secret in Secrets Manager
+        region_name = "eu-west-3"  # AWS region of the Secrets Manager
 
-    # Create a Secrets Manager client
-    client = boto3.client("secretsmanager", region_name=region_name)
-    
-    # Retrieve and parse the secret
-    response = client.get_secret_value(SecretId=secret_name)
-    config = json.loads(response["SecretString"])  # Assuming this is a JSON object
-    return config
+        # Create a Secrets Manager client
+        client = boto3.client("secretsmanager", region_name=region_name)
+        
+        # Retrieve and parse the secret
+        response = client.get_secret_value(SecretId=secret_name)
+        config = json.loads(response["SecretString"])  # Assuming this is a JSON object
+        return config
+    except Exception as e:
+        print(f"Error retrieving autogreens config from Secrets Manager: {str(e)}")
+        raise
 
 # Retrieve Google API credentials and apply scopes
 creds = get_google_credentials()
@@ -98,6 +110,18 @@ GY_EXP_UNIT = 7
 LAST_UPDATE_COL_MKT = 16
 LAST_UPDATE_COL_EXP = 17
 
+# XPATH Constants
+# XPATH_LOGIN_USERNAME_INPUT = "/html/body/div[2]/div/div/div/form/div[1]/div[1]/input"
+XPATH_LOGIN_USERNAME_INPUT = "/html/body/div[1]/main/div/div/div[2]/form/div[1]/input"
+# XPATH_LOGIN_PASSWORD_INPUT = "/html/body/div[2]/div/div/div/form/div[1]/div[2]/input"
+XPATH_LOGIN_PASSWORD_INPUT = "/html/body/div[1]/main/div/div/div[2]/form/div[2]/input"
+# XPATH_OBSTRUCTING_ELEMENT = "/html/body/div[3]"
+# XPATH_OBSTRUCTING_ELEMENT = "/html/body/div[3]"
+# XPATH_LOGIN_BUTTON = "/html/body/div[2]/div/div/div/form/div[2]/input"
+XPATH_LOGIN_BUTTON = "/html/body/div[1]/main/div/div/div[2]/form/div[3]/input"
+# XPATH_ITEM_DATA_UNIT_PRICE = "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[2]/td[2]"                  
+XPATH_ITEM_DATA_UNIT_PRICE = "/html/body/div[1]/main/div/div/div[2]/article/section/div[1]/div/div/div[9]/div"                  
+
 # Load configuration
 config = get_autogreens_config()
 
@@ -120,6 +144,33 @@ def human_sleep(min_time=1, max_time=3):
    sleep(sleep_time)
 
 
+def human_type(element, text):
+    """Type text character by character with random delays to mimic human typing"""
+    for char in text:
+        element.send_keys(char)
+        sleep(random.uniform(0.05, 0.2))  # Random delay between keystrokes
+
+
+def random_mouse_movement(driver, element):
+    """Perform random mouse movements before clicking to mimic human behavior"""
+    action = ActionChains(driver)
+    # Move to a random offset first
+    action.move_to_element_with_offset(element, 
+                                       random.randint(-10, 10), 
+                                       random.randint(-10, 10))
+    action.pause(random.uniform(0.1, 0.3))
+    action.move_to_element(element)
+    action.pause(random.uniform(0.1, 0.5))
+    return action
+
+
+def random_scroll(driver):
+    """Perform random scrolling to mimic human behavior"""
+    scroll_amount = random.randint(100, 500)
+    driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
+    human_sleep(0.5, 1.5)
+
+
 
 
 options = webdriver.ChromeOptions()
@@ -127,8 +178,8 @@ options.binary_location = '/opt/chrome/chrome'
 options.add_argument("--headless=new")
 options.add_argument('--no-sandbox')
 options.add_argument("--disable-gpu")
-#small screen to save memory selenium
-options.add_argument("--window-size=800,600")
+# Realistic window size (common laptop resolution)
+options.add_argument("--window-size=1920,1080")
 options.add_argument("--single-process")
 options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--disable-dev-tools")
@@ -136,51 +187,121 @@ options.add_argument("--no-zygote")
 options.add_argument(f"--user-data-dir={mkdtemp()}")
 options.add_argument(f"--data-path={mkdtemp()}")
 options.add_argument(f"--disk-cache-dir={mkdtemp()}")
+
+# Anti-bot detection measures
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option('useAutomationExtension', False)
+# Realistic user agent
+options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+# Additional headers to appear more human
+prefs = {
+    "profile.default_content_setting_values.notifications": 2,
+    "credentials_enable_service": False,
+    "profile.password_manager_enabled": False
+}
+options.add_experimental_option("prefs", prefs)
+
 # options.add_argument("--remote-debugging-port=9222")
 
 
 def init_eos(username, password):
-    # Initialize the Chrome driver
-   service = webdriver.ChromeService("/opt/chromedriver")
-   driver = webdriver.Chrome(options=options, service=service)
+    driver = None
+    try:
+        # Initialize the Chrome driver
+        service = webdriver.ChromeService("/opt/chromedriver")
+        driver = webdriver.Chrome(options=options, service=service)
+        
+        # Override navigator.webdriver flag to avoid detection
+        driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined
+                });
+                window.navigator.chrome = {
+                    runtime: {}
+                };
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+            '''
+        })
 
-   # Step 1: Log in to the website
-   driver.get("https://eos.firstinfresh.be/login")
-   human_sleep(2, 4)
-   print(username, password)
+        # Step 1: Log in to the website
+        driver.get("https://eos.firstinfresh.be/user/login")
+        human_sleep(3, 6)  # Longer initial page load wait
+        print(username, password)
 
-   # Enter username
-   username_input = driver.find_element(By.XPATH, "/html/body/div[2]/div/div/div/form/div[1]/div[1]/input")
-   ActionChains(driver).move_to_element(username_input).click().perform()
-   human_sleep(1, 3)
-   username_input.send_keys(username)  # Replace with your username
-   human_sleep(1, 3)
-   print("Username entered")
+        # Random scroll to mimic reading the page
+        random_scroll(driver)
+        human_sleep(1, 2)
 
-   # Enter password
-   password_input = driver.find_element(By.XPATH, "/html/body/div[2]/div/div/div/form/div[1]/div[2]/input")
-   ActionChains(driver).move_to_element(password_input).click().perform()
-   human_sleep(1, 3)
-   password_input.send_keys(password)  # Replace with your password
-   human_sleep(1, 3)
-   print("Password entered")
+        # Enter username
+        try:
+            username_input = driver.find_element(By.XPATH, XPATH_LOGIN_USERNAME_INPUT)
+            # Human-like mouse movement before clicking
+            action = random_mouse_movement(driver, username_input)
+            action.click().perform()
+            human_sleep(0.5, 1.5)
+            
+            # Type username character by character
+            human_type(username_input, username)
+            human_sleep(0.5, 1.5)
+            print("Username entered")
+        except Exception as e:
+            print(f"Error entering username: {str(e)}")
+            capture_screenshot_and_upload(driver, "error-username.png")
+            raise
 
-   print(driver.page_source)  # This will print the full HTML of the current page
-   capture_screenshot_and_upload(
-            driver, "login-page.png"
-        )
-   
-   element_to_remove = driver.find_element(By.XPATH, "/html/body/div[3]")
-   driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", element_to_remove)
-   print("Obstructing element removed.")
+        # Enter password
+        try:
+            password_input = driver.find_element(By.XPATH, XPATH_LOGIN_PASSWORD_INPUT)
+            # Human-like mouse movement before clicking
+            action = random_mouse_movement(driver, password_input)
+            action.click().perform()
+            human_sleep(0.5, 1.5)
+            
+            # Type password character by character
+            human_type(password_input, password)
+            human_sleep(1, 2)
+            print("Password entered")
+        except Exception as e:
+            print(f"Error entering password: {str(e)}")
+            capture_screenshot_and_upload(driver, "error-password.png")
+            raise
+
+        print(driver.page_source)  # This will print the full HTML of the current page
+        capture_screenshot_and_upload(driver, "login-page.png")
+        
+        # element_to_remove = driver.find_element(By.XPATH, XPATH_OBSTRUCTING_ELEMENT)
+        # driver.execute_script("arguments[0].parentNode.removeChild(arguments[0]);", element_to_remove)
+        # print("Obstructing element removed.")
+        
+        # Submit the form
+        try:
+            login_button = driver.find_element(By.XPATH, XPATH_LOGIN_BUTTON)
+            # Human-like mouse movement before clicking
+            action = random_mouse_movement(driver, login_button)
+            action.click().perform()
+            human_sleep(3, 6)  # Longer wait after login
+            print("Logged in successfully")
+        except Exception as e:
+            print(f"Error clicking login button: {str(e)}")
+            capture_screenshot_and_upload(driver, "error-login-button.png")
+            raise
+        
+        return driver
     
-   # Submit the form
-   login_button = driver.find_element(By.XPATH, "/html/body/div[2]/div/div/div/form/div[2]/input")
-   ActionChains(driver).move_to_element(login_button).click().perform()
-   human_sleep(2, 4)
-   print("Logged in successfully")
-  
-   return driver
+    except Exception as e:
+        print(f"Error in init_eos: {str(e)}")
+        if driver:
+            capture_screenshot_and_upload(driver, "error-init-eos.png")
+            driver.quit()
+        raise
 
 
 import re
@@ -197,112 +318,191 @@ def extract_price(input_string):
 
 
 def run_eos(username, password, sheet):
-    driver = init_eos(username, password)
-    capture_screenshot_and_upload(
-            driver, "after-init.png"
-        )
-    data = read_data(sheet)
-    i = 2
-    for e in data:
-        print(e)
-        # Step 2: Navigate to the desired page
-        driver.get(f"https://eos.firstinfresh.be/shop/item/{e.get('GY-REF')}")
-        human_sleep(3, 5)
-        print(driver.page_source)  # This will print the full HTML of the current page
-        capture_screenshot_and_upload(
-            driver, f"item-{e.get('GY-REF')}.png"
-        )
-
-
-        # Step 3: Scrape the required information
-        #Try or skip
+    driver = None
+    try:
+        driver = init_eos(username, password)
+        capture_screenshot_and_upload(driver, "after-init.png")
         
-        try:
-        #  vp_data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[4]/td[2]")
-        #  scraped_data = vp_data_element.text
-        #  scraped_data = extract_price(scraped_data)
-        #  print(scraped_data)
-        #  update_cell(sheet, i, PV_EXP, scraped_data)
-         data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[2]/td[2]")
-         scraped_data = data_element.text
-         print(scraped_data)
-         update_cell(sheet, i, GY_EXP_UNIT, scraped_data)
-         ct = datetime.datetime.now()
-         update_cell(sheet, i, LAST_UPDATE_COL_EXP, str(ct))
-        except:
-         print("Error")
-         update_cell(sheet, i, GY_EXP_UNIT, "Error")
-         ct = datetime.datetime.now()
-         update_cell(sheet, i, LAST_UPDATE_COL_EXP, "Error")
-         
-        i+=1
+        # Random scroll after login to mimic human behavior
+        random_scroll(driver)
+        human_sleep(2, 4)
+        
+        data = read_data(sheet)
+        i = 2
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
+        for e in data:
+            print(e)
+            
+            # Check if we've hit the consecutive error limit
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"Stopping: {consecutive_errors} consecutive errors encountered")
+                break
+            
+            try:
+                # Step 2: Navigate to the desired page
+                driver.get(f"https://eos.firstinfresh.be/product/{e.get('GY-REF')}")
+                human_sleep(4, 7)  # Longer wait for page load
+                
+                # Mimic reading behavior - random scroll
+                random_scroll(driver)
+                human_sleep(1, 3)
+                
+                print(driver.page_source)  # This will print the full HTML of the current page
+                capture_screenshot_and_upload(driver, f"item-{e.get('GY-REF')}.png")
 
+                # Step 3: Scrape the required information
+                try:
+                    data_element = driver.find_element(By.XPATH, XPATH_ITEM_DATA_UNIT_PRICE)
+                    # Mimic hovering over element before reading
+                    ActionChains(driver).move_to_element(data_element).pause(random.uniform(0.2, 0.5)).perform()
+                    human_sleep(0.5, 1)
+                    
+                    scraped_data = data_element.text
+                    print(scraped_data)
+                    update_cell(sheet, i, GY_EXP_UNIT, scraped_data)
+                    ct = datetime.datetime.now()
+                    update_cell(sheet, i, LAST_UPDATE_COL_EXP, str(ct))
+                    consecutive_errors = 0  # Reset on success
+                except Exception as e:
+                    print(f"Error scraping data for {e.get('GY-REF')}: {str(e)}")
+                    consecutive_errors += 1
+                    try:
+                        update_cell(sheet, i, GY_EXP_UNIT, "Error")
+                        ct = datetime.datetime.now()
+                        update_cell(sheet, i, LAST_UPDATE_COL_EXP, f"Error {str(ct)}")
+                    except Exception as update_error:
+                        print(f"Failed to update error status for item {e.get('GY-REF')}: {str(update_error)}")
+                
+                # Random delay between items to avoid pattern detection
+                human_sleep(1, 3)
+                    
+            except Exception as e:
+                print(f"Error processing item {e.get('GY-REF')}: {str(e)}")
+                consecutive_errors += 1
+                try:
+                    update_cell(sheet, i, GY_EXP_UNIT, "Error")
+                    ct = datetime.datetime.now()
+                    update_cell(sheet, i, LAST_UPDATE_COL_EXP, f"Error {str(ct)}")
+                except Exception as update_error:
+                    print(f"Failed to update error status for item {e.get('GY-REF')}: {str(update_error)}")
+            
+            i += 1
 
-    driver.quit()
+    except Exception as e:
+        print(f"Critical error in run_eos: {str(e)}")
+        # Don't raise, allow the function to complete gracefully
+    finally:
+        if driver:
+            driver.quit()
     
 def run_eos_mkt(username, password, sheet):
-    driver = init_eos(username, password)
-    capture_screenshot_and_upload(
-            driver, "after-init.png"
-        )
-    data = read_data(sheet)
-    i = 2
-    for e in data:
-        print(e)
-        # Step 2: Navigate to the desired page
-        driver.get(f"https://eos.firstinfresh.be/shop/item/{e.get('GY-REF')}")
-        human_sleep(3, 5)
-        print(driver.page_source)  # This will print the full HTML of the current page
-        capture_screenshot_and_upload(
-            driver, f"item-{e.get('GY-REF')}.png"
-        )
-
-
-        # Step 3: Scrape the required information
-        #Try or skip
+    driver = None
+    try:
+        driver = init_eos(username, password)
+        capture_screenshot_and_upload(driver, "after-init.png")
         
-        try:
-        #  vp_data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[4]/td[2]")
-        #  scraped_data = vp_data_element.text
-        #  scraped_data = extract_price(scraped_data)
-        #  print(scraped_data)
-        #  update_cell(sheet, i, PV_MKT, scraped_data)
-         data_element = driver.find_element(By.XPATH, "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[2]/td[2]")
-         scraped_data = data_element.text
-         print(scraped_data)
-         update_cell(sheet, i, GY_MKT_UNIT, scraped_data)
-         ct = datetime.datetime.now()
-         update_cell(sheet, i, LAST_UPDATE_COL_MKT, str(ct))
-        except:
-         print("Error")
-         update_cell(sheet, i, GY_MKT_UNIT, "Error")
-         ct = datetime.datetime.now()
-         update_cell(sheet, i, LAST_UPDATE_COL_MKT, "Error")
-         
-        i+=1
+        # Random scroll after login to mimic human behavior
+        random_scroll(driver)
+        human_sleep(2, 4)
+        
+        data = read_data(sheet)
+        i = 2
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
+        for e in data:
+            print(e)
+            
+            # Check if we've hit the consecutive error limit
+            if consecutive_errors >= max_consecutive_errors:
+                print(f"Stopping: {consecutive_errors} consecutive errors encountered")
+                break
+            
+            try:
+                # Step 2: Navigate to the desired page
+                driver.get(f"https://eos.firstinfresh.be/product/{e.get('GY-REF')}")
+                human_sleep(4, 7)  # Longer wait for page load
+                
+                # Mimic reading behavior - random scroll
+                random_scroll(driver)
+                human_sleep(1, 3)
+                
+                print(driver.page_source)  # This will print the full HTML of the current page
+                capture_screenshot_and_upload(driver, f"item-{e.get('GY-REF')}.png")
 
+                # Step 3: Scrape the required information
+                try:
+                    data_element = driver.find_element(By.XPATH, XPATH_ITEM_DATA_UNIT_PRICE)
+                    # Mimic hovering over element before reading
+                    ActionChains(driver).move_to_element(data_element).pause(random.uniform(0.2, 0.5)).perform()
+                    human_sleep(0.5, 1)
+                    
+                    scraped_data = data_element.text
+                    print(scraped_data)
+                    update_cell(sheet, i, GY_MKT_UNIT, scraped_data)
+                    ct = datetime.datetime.now()
+                    update_cell(sheet, i, LAST_UPDATE_COL_MKT, str(ct))
+                    consecutive_errors = 0  # Reset on success
+                except Exception as e:
+                    print(f"Error scraping data for {e.get('GY-REF')}: {str(e)}")
+                    consecutive_errors += 1
+                    try:
+                        update_cell(sheet, i, GY_MKT_UNIT, "Error")
+                        ct = datetime.datetime.now()
+                        update_cell(sheet, i, LAST_UPDATE_COL_MKT, f"Error {str(ct)}")
+                    except Exception as update_error:
+                        print(f"Failed to update error status for item {e.get('GY-REF')}: {str(update_error)}")
+                
+                # Random delay between items to avoid pattern detection
+                human_sleep(1, 3)
+                    
+            except Exception as e:
+                print(f"Error processing item {e.get('GY-REF')}: {str(e)}")
+                consecutive_errors += 1
+                try:
+                    update_cell(sheet, i, GY_MKT_UNIT, "Error")
+                    ct = datetime.datetime.now()
+                    update_cell(sheet, i, LAST_UPDATE_COL_MKT, f"Error {str(ct)}")
+                except Exception as update_error:
+                    print(f"Failed to update error status for item {e.get('GY-REF')}: {str(update_error)}")
+            
+            i += 1
 
-    driver.quit()  
+    except Exception as e:
+        print(f"Critical error in run_eos_mkt: {str(e)}")
+        # Don't raise, allow the function to complete gracefully
+    finally:
+        if driver:
+            driver.quit()  
 
 
 
 
 
 def handler(event, context):
-    # SHEET WITH NAME "MARKET" AND "EXPRESS"
-    # sheet_market = client.open('AUTOGREENS').get_worksheet(0)
-    sheet_express = client.open('DIALNA-ASSORTIMENT').get_worksheet(0)
-    # run_eos(GY_USERNAME_MARKET, GY_PASSWORD_MARKET, sheet_market)
-    # run_mc(MC_USERNAME_MARKET, MC_PASSWORD_MARKET, sheet_market, MC_SHOP_ID_MARKET)
-    # sheet_market.sort((PRIJS_VERSHIL_COL, 'des'))
-    run_eos(GY_USERNAME_EXPRESS, GY_PASSWORD_EXPRESS, sheet_express)
-    # run_mc(MC_USERNAME_EXPRESS, MC_PASSWORD_EXPRESS, sheet_express, MC_SHOP_ID_EXPRESS)
-    # sheet_express.sort((PRIJS_VERSHIL_COL, 'des'))
+    try:
+        # SHEET WITH NAME "MARKET" AND "EXPRESS"
+        # sheet_market = client.open('AUTOGREENS').get_worksheet(0)
+        sheet_express = client.open('DIALNA-ASSORTIMENT').get_worksheet(0)
+        # run_eos(GY_USERNAME_MARKET, GY_PASSWORD_MARKET, sheet_market)
+        # run_mc(MC_USERNAME_MARKET, MC_PASSWORD_MARKET, sheet_market, MC_SHOP_ID_MARKET)
+        # sheet_market.sort((PRIJS_VERSHIL_COL, 'des'))
+        run_eos(GY_USERNAME_EXPRESS, GY_PASSWORD_EXPRESS, sheet_express)
+        # run_mc(MC_USERNAME_EXPRESS, MC_PASSWORD_EXPRESS, sheet_express, MC_SHOP_ID_EXPRESS)
+        # sheet_express.sort((PRIJS_VERSHIL_COL, 'des'))
 
-    return {
-        "statusCode": 200,
-        "body": "OK"
-    }
+        return {
+            "statusCode": 200,
+            "body": "OK"
+        }
+    except Exception as e:
+        print(f"Error in handler: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": f"Error: {str(e)}"
+        }
 
 
 
