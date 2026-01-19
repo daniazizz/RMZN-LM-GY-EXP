@@ -121,6 +121,7 @@ XPATH_LOGIN_PASSWORD_INPUT = "/html/body/div[1]/main/div/div/div[2]/form/div[2]/
 XPATH_LOGIN_BUTTON = "/html/body/div[1]/main/div/div/div[2]/form/div[3]/input"
 # XPATH_ITEM_DATA_UNIT_PRICE = "/html/body/div[2]/div[2]/div/div[2]/div/div[2]/div[6]/table/tbody/tr[2]/td[2]"                  
 XPATH_ITEM_DATA_UNIT_PRICE = "/html/body/div[1]/main/div/div/div[2]/article/section/div[1]/div/div/div[9]/div"                  
+XPATH_ITEM_DATA_UNIT_PRICE2 = "/html/body/div[1]/main/div/div/div[2]/article/section/div[1]/div/div/div[8]/div"                  
 
 # Load configuration
 config = get_autogreens_config()
@@ -384,6 +385,7 @@ def run_eos(username, password, sheet):
 
                 # Step 3: Scrape the required information
                 try:
+                    # First try the primary XPATH
                     data_element = driver.find_element(By.XPATH, XPATH_ITEM_DATA_UNIT_PRICE)
                     # Mimic hovering over element before reading
                     ActionChains(driver).move_to_element(data_element).pause(random.uniform(0.2, 0.5)).perform()
@@ -391,6 +393,18 @@ def run_eos(username, password, sheet):
                     
                     scraped_data = data_element.text
                     print(f"Raw scraped data: {scraped_data}")
+                    
+                    # Check if the scraped data includes a percentage (format like "€6,95 29,38%")
+                    has_percentage = re.search(r'\d+[.,]\d{1,2}\s*%', scraped_data)
+                    
+                    if has_percentage:
+                        # If percentage is included, use the alternative XPATH
+                        print(f"Percentage detected in price, using XPATH_ITEM_DATA_UNIT_PRICE2")
+                        data_element = driver.find_element(By.XPATH, XPATH_ITEM_DATA_UNIT_PRICE2)
+                        ActionChains(driver).move_to_element(data_element).pause(random.uniform(0.2, 0.5)).perform()
+                        human_sleep(0.5, 1)
+                        scraped_data = data_element.text
+                        print(f"Raw scraped data from alternative path: {scraped_data}")
                     
                     # Format the price to remove € symbol and any percentage
                     formatted_price = format_price(scraped_data)
